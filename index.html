@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>研究報告書 書式チェッカー（長期研修員用）</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>📄 研究報告書 書式チェッカー</h1>
+  <p class="subtitle">長期研修員用</p>
+  <p class="privacy">ⓘ ファイルはお使いのPC内で処理され、サーバには送信されません。</p>
+</header>
+
+<main>
+  <section id="dropArea" class="drop-area">
+    <div class="drop-inner">
+      <div class="drop-icon">📁</div>
+      <p class="drop-text">.docx または .pdf ファイルをここにドロップ</p>
+      <p class="drop-sub">または</p>
+      <label class="file-button">
+        ファイルを選択
+        <input type="file" id="fileInput" accept=".docx,.pdf" hidden>
+      </label>
+      <p class="drop-hint">※ PDFは取得できる項目に限りがあるため、Word(.docx)を推奨します</p>
+    </div>
+  </section>
+
+  <section id="result" class="result hidden">
+    <div class="result-header">
+      <h2 id="fileName"></h2>
+      <button id="resetBtn" class="reset-btn">別のファイルをチェック</button>
+    </div>
+    <div id="summary" class="summary"></div>
+    <div id="checks" class="checks"></div>
+  </section>
+
+  <section id="error" class="error hidden"></section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+</script>
+<script src="checker.js"></script>
+<script src="pdf-checker.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

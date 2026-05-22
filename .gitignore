@@ -1,0 +1,9 @@
+.DS_Store
+*.pdf
+*.docx
+node_modules/
+.vscode/
+.idea/
+
+# ただし READMEで参照するサンプルは除外しない場合はここで例外を書く
+# !sample.docx

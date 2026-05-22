@@ -951,14 +951,15 @@ function checkBodyAndHeadings(ctx) {
   const endIdx = paras.findIndex((p, i) => i > kwIdx && /^〈(注記|引用文献|生成\s*AI\s*利用)〉/.test(p.text.trim()));
   const bodyParas = paras.slice(kwIdx + 1, endIdx === -1 ? undefined : endIdx);
 
-  const bigHeads = [];   // 大見出し: "N. xxx"
-  const smallHeads = []; // 小見出し: "N.M. xxx"
+  const bigHeads = [];   // 大見出し: "N. xxx" または "N　xxx"
+  const smallHeads = []; // 小見出し: "N.M. xxx" または "N.M xxx"（末尾ピリオドの有無を許容）
   const bodyTexts = [];  // 本文
 
+  // 小見出しを先に判定（大見出しのパターンとも前方一致するため）
   for (const p of bodyParas) {
     const t = p.text.trim();
     if (!t) continue;
-    if (/^\d+\.\d+\./.test(t)) {
+    if (/^\d+\.\d+\.?[　\s]/.test(t)) {
       smallHeads.push(p);
     } else if (/^\d+\.[　\s]/.test(t)) {
       bigHeads.push(p);
@@ -1003,6 +1004,18 @@ function checkBodyAndHeadings(ctx) {
   // 小見出し
   if (smallHeads.length > 0) {
     items.push(...checkBatchFontSize(smallHeads, "小見出し", isGothic, "BIZ UDゴシック", 10, REF.SMALL_HEAD));
+
+    // 数字の後（N.M. + 全角スペース）形式チェック
+    const punctNGs = smallHeads.filter(h => !/^\d+\.\d+\.　/.test(h.text));
+    if (punctNGs.length > 0) {
+      items.push(makeCheck("小見出し：数字の後（N.M. + 全角スペース）", "warn", {
+        current: punctNGs.slice(0,3).map(h => `「${h.text.slice(0,30)}」`).join(" / "),
+        expected: "1.1. （末尾ピリオド）＋ 全角スペース ＋ 見出し文字",
+        hint: "小見出しは『1.1.』のように末尾にピリオドを付け、その後に全角スペースを入れてください。",
+        location: punctNGs[0] ? { ...punctNGs[0].location, snippet: punctNGs[0].text.slice(0,30) } : null,
+        reference: REF.SMALL_HEAD,
+      }));
+    }
   }
 
   // 図表タイトル

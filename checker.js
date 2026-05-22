@@ -109,18 +109,23 @@ async function extractContext(zip) {
   const sectPrs = Array.from(docDoc.getElementsByTagNameNS(W_NS, "sectPr"));
   const firstSectPr = sectPrs[0] || null;
 
-  // ヘッダー参照
+  // ヘッダー・フッター参照
   const headerRefs = {};
+  const footerRefs = {};
   if (firstSectPr) {
     Array.from(firstSectPr.getElementsByTagNameNS(W_NS, "headerReference"))
       .forEach((ref) => {
         const type = wAttr(ref, "type") || "default";
-        const rid  = ref.getAttribute("r:id");
-        headerRefs[type] = rid;
+        headerRefs[type] = ref.getAttribute("r:id");
+      });
+    Array.from(firstSectPr.getElementsByTagNameNS(W_NS, "footerReference"))
+      .forEach((ref) => {
+        const type = wAttr(ref, "type") || "default";
+        footerRefs[type] = ref.getAttribute("r:id");
       });
   }
 
-  // rels で headerN.xml の場所を解決
+  // rels で headerN.xml / footerN.xml の場所を解決
   const relsDoc = parseXml(relsXml);
   const ridToTarget = {};
   Array.from(relsDoc.getElementsByTagName("Relationship"))
@@ -132,6 +137,13 @@ async function extractContext(zip) {
     if (!target) continue;
     const f = zip.file(`word/${target}`);
     if (f) headers[type] = await f.async("string");
+  }
+  const footers = {};
+  for (const [type, rid] of Object.entries(footerRefs)) {
+    const target = ridToTarget[rid];
+    if (!target) continue;
+    const f = zip.file(`word/${target}`);
+    if (f) footers[type] = await f.async("string");
   }
 
   // スタイル解析
@@ -149,7 +161,7 @@ async function extractContext(zip) {
   return {
     documentXml, stylesXml, settingsXml,
     docDoc, sectPrs, firstSectPr,
-    headers, styles, paragraphs, textboxParagraphs,
+    headers, footers, styles, paragraphs, textboxParagraphs,
   };
 }
 
@@ -1016,6 +1028,28 @@ function checkBodyAndHeadings(ctx) {
         reference: REF.SMALL_HEAD,
       }));
     }
+
+    // 小見出しの上に1行空けが入っていないか（マニュアル: 小見出しの上は1行空けない）
+    const blankAboveNGs = [];
+    for (const h of smallHeads) {
+      const prevIdx = h.index - 1;
+      if (prevIdx >= 0) {
+        const prev = ctx.paragraphs[prevIdx];
+        if (prev && prev.text.trim() === "") {
+          blankAboveNGs.push({ snippet: h.text.slice(0,30), location: h.location });
+        }
+      }
+    }
+    items.push(makeCheck("小見出し：上に空行を入れない",
+      blankAboveNGs.length === 0 ? "ok" : "error", {
+      current: blankAboveNGs.length === 0
+        ? "上に空行なし"
+        : `${blankAboveNGs.length}件の小見出しの上に空行あり`,
+      expected: "小見出しの直前に空行を入れない",
+      hint: blankAboveNGs.length === 0 ? null : "該当する小見出しの上にある空行（空の段落）を削除してください。",
+      locations: blankAboveNGs.length > 0 ? blankAboveNGs : null,
+      reference: REF.SMALL_HEAD,
+    }));
   }
 
   // 図表タイトル
@@ -1485,7 +1519,45 @@ function checkProhibited(ctx) {
     reference: REF.LEADING_SP,
   }));
 
+  // ページ番号（マニュアル外の所内ルール: ページ番号は打たない）
+  const pageNumSources = [];
+  for (const [type, xml] of Object.entries(ctx.footers || {})) {
+    if (hasPageNumberField(xml)) {
+      pageNumSources.push(type === "default" ? "フッター（奇数ページ）" :
+                          type === "even"    ? "フッター（偶数ページ）" :
+                          type === "first"   ? "フッター（先頭ページ）" :
+                          `フッター（${type}）`);
+    }
+  }
+  for (const [type, xml] of Object.entries(ctx.headers || {})) {
+    if (hasPageNumberField(xml)) {
+      pageNumSources.push(type === "default" ? "ヘッダー（奇数ページ）" :
+                          type === "even"    ? "ヘッダー（偶数ページ）" :
+                          type === "first"   ? "ヘッダー（先頭ページ）" :
+                          `ヘッダー（${type}）`);
+    }
+  }
+  if (hasPageNumberField(ctx.documentXml)) pageNumSources.push("本文");
+
+  items.push(makeCheck("ページ番号", pageNumSources.length === 0 ? "ok" : "error", {
+    current: pageNumSources.length === 0 ? "なし" : `${pageNumSources.join("、")}に検出`,
+    expected: "ページ番号は挿入しない",
+    hint: pageNumSources.length === 0 ? null
+      : "Wordで該当するヘッダー／フッターを開き、ページ番号フィールドを削除してください（フィールドを選択して Delete）。",
+    reference: "（マニュアル外・所内ルール）ページ番号は打たない",
+  }));
+
   return { title: "7. 禁止事項チェック", items };
+}
+
+// PAGE フィールドが含まれているか判定
+function hasPageNumberField(xml) {
+  if (!xml) return false;
+  // <w:fldSimple w:instr="..."> に PAGE
+  if (/<w:fldSimple[^>]+w:instr="[^"]*\bPAGE\b/i.test(xml)) return true;
+  // <w:instrText>...PAGE...</w:instrText>（複合フィールド）
+  if (/<w:instrText[^>]*>[^<]*\bPAGE\b[^<]*<\/w:instrText>/i.test(xml)) return true;
+  return false;
 }
 
 // 段落を走査して指定パターンの出現箇所をリストアップ

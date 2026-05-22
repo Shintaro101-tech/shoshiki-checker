@@ -1323,11 +1323,18 @@ function checkReferences(ctx) {
     }
 
     // 著者間の区切り（カンマ or 中黒）
-    // 「Matsuura Y、Isa Y、...」のようにカンマで区切っているのは違反（中黒・または全角コンマ）
-    // ただし発行年括弧の前までで判定
+    // 半角カンマで「著者間」を区切っているのが違反。ただし以下は OK:
+    //  - 単著で「Krashen, S. D.」のように "姓, 名のイニシャル" 形式の半角カンマ
+    //  - 全角コンマ「，」または中黒「・」で区切られているもの
+    // 違反パターン例:
+    //  - 欧文複数著者: "Smith, J., Brown, B." → 半角カンマで著者間を分けている
+    //  - 和文複数著者: "大熊信彦,酒井美恵子" → 半角カンマで著者間を分けている
     const beforeYear = text.split(/[（(]\s*\d{4}/)[0] || "";
-    // 半角カンマがあれば違反、全角コンマ「，」または中黒「・」は OK
-    if (/,/.test(beforeYear) && !/[，・]/.test(beforeYear)) {
+    // 欧文: 「, 」の後に「[A-Z][a-z]+」（大文字始まりの単語＝姓）が続く場合は複数著者
+    const enMultiAuthor = /,\s*[A-Z][a-z]+/.test(beforeYear);
+    // 和文: 「,」の後に日本語文字が続く場合は複数著者
+    const jaMultiAuthor = /,\s*[぀-ヿ一-鿿]/.test(beforeYear);
+    if ((enMultiAuthor || jaMultiAuthor) && !/[，・]/.test(beforeYear)) {
       punctMidNGs.push({ snippet: text.slice(0,40), location: p.location });
     }
   }
